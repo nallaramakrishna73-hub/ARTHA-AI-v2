@@ -1,0 +1,8 @@
+{
+  "name": "ARTHA AI - Indian Financial Research & Intelligence Platform",
+  "description": "Agentic financial intelligence platform for NSE & BSE equities, technical & fundamental scoring, MPT portfolio optimization, and 13-section evidence-based research reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
