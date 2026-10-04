@@ -32,6 +32,8 @@ export interface QuoteData {
   fiftyTwoWeekLow: number;
   asOf: string; // IST timestamp
   isDemo?: boolean;
+  isStale?: boolean;
+  fetchedAt?: string;
   source: string;
 }
 

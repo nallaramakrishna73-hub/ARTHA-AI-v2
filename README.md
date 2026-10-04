@@ -1,29 +1,44 @@
-# ARTHA AI: AI-Powered Indian Financial Research & Intelligence Platform
+# ARTHA AI: Enterprise Financial Research & Intelligence Platform (India NSE/BSE)
 
 > **Capabl Financial Research AI Agent Development Project (Dual Track) — Target: Track B (Advanced)**  
-> **Prepared by:** Ramakrishna Janhvi | 4 October 2026  
-> **Mandatory Disclaimer:** *For educational and informational purposes only. Not investment advice.*
+> **Built with:** TypeScript, Express server, Vite, React 19, Tailwind CSS v4, `@langchain/langgraph`, `@google/genai` (Gemini 3.8 Flash), Drizzle ORM (SQLite / PostgreSQL), Redis, jsPDF.  
+> **Mandatory Regulatory Disclaimer:** *For educational and informational purposes only. Not personalized investment advice.*
 
 ---
 
 ## 1. Product Overview
 
-**ARTHA AI** (*Artha* = wealth / economic value in Sanskrit) is an agentic, evidence-based financial intelligence and research platform tailored specifically for the Indian equity markets (NSE / BSE). 
+**ARTHA AI** (*Artha* = economic value / wealth in Sanskrit) is an enterprise financial intelligence and research platform tailored specifically for Indian equities (NSE / BSE). 
 
-Instead of acting as a generic conversational chatbot or stock price predictor, ARTHA AI behaves like a rigorous institutional equity research analyst:
-- When a user inputs a query (e.g., *"Analyze RELIANCE.NS"* or *"Compare TCS and Infosys"*), a **12-Node LangGraph-style workflow** executes in real time.
-- The pipeline ingests multi-source market data, computes deterministic technical indicators, audits fundamental ratios, scores FinBERT news sentiment with recency decay, checks sovereign macroeconomic benchmarks, and calculates portfolio risk metrics.
-- Output includes a **Five-Pillar Composite Analytical Score (0–100)**, an interactive financial chart with technical overlays, side-by-side comparative radar graphs, an MPT portfolio optimizer with efficient frontier curves, what-if stress tests, and a downloadable **13-Section Evidence-Based PDF Research Report**.
+Instead of acting as a generic conversational chatbot, ARTHA AI executes an automated **LangGraph StateGraph Workflow**:
+- Ingests multi-source market data via an async **ProviderRouter** with **Opossum Circuit Breakers** (Yahoo Finance -> Alpha Vantage -> Cache -> Sample Fallback).
+- Computes Wilder RSI(14), MACD(12,26,9), EMAs (20/50/200), and Bollinger Bands.
+- Audits financial statements (P/E, P/B, ROE, ROCE, D/E, Free Cash Flow).
+- Ingests news headlines and runs **FinBERT HuggingFace Sentiment Analysis** with 3-day exponential recency decay and 7-day momentum tracking.
+- Evaluates RBI policy repo rate (6.50%), CPI inflation (5.12%), and GDP growth (7.4%) against sector transmission profiles.
+- Models risk metrics: Annualized Volatility, Beta vs NIFTY 50 (^NSEI), 1-Day 95% VaR, CVaR Expected Shortfall, and Max Drawdown.
+- Formulates a **Five-Pillar Composite Analytical Score (0–100)** and outputs a downloadable **13-Section Evidence-Based PDF Research Dossier**.
 
 ---
 
-## 2. Core Architecture & 12-Node Agent Pipeline
+## 2. Technology Stack & Architecture
+
+- **Backend**: Node.js, Express, TypeScript, `@langchain/langgraph`, `@langchain/google-genai`, `@google/genai` SDK.
+- **Data Persistence**: Drizzle ORM with `better-sqlite3` (local dev) / PostgreSQL (production), Redis caching via `ioredis`.
+- **Resilience**: `opossum` circuit breaker (trips after 5 failures in 60s for 120s cooldown), `p-retry` exponential backoff, per-provider rate limiting.
+- **Frontend**: React 19, Vite, Tailwind CSS v4, `lightweight-charts`, `recharts`, `lucide-react`, `jspdf`.
+- **Testing & Monitoring**: Vitest, Supertest, `prom-client` Prometheus metrics at `/api/metrics`, `/api/monitoring` dashboard.
+- **Containerization**: Docker multi-stage build, `docker-compose.yml` (App, PostgreSQL, Redis).
+
+---
+
+## 3. LangGraph StateGraph Architecture
 
 ```
 [User Query] "Analyze RELIANCE.NS"
      │
      ▼
-[1. ResearchPlanner Node]  ── (Intent recognition & tool dependency formulation)
+[1. ResearchPlanner Node]  ── (Intent recognition & dependency graph formulation)
      │
      ├──────────────────────┬──────────────────────┬──────────────────────┐
      ▼                      ▼                      ▼                      ▼
@@ -34,7 +49,7 @@ Instead of acting as a generic conversational chatbot or stock price predictor, 
      ▼                                                                    ▼
 [6. TechnicalNode]                                                  [7. RiskNode]
 (Wilder RSI, MACD, Bollinger, EMA 20/50/200, S/R pivots)           (Annualized Vol, Beta vs NIFTY,
-                                                                     1D 95% VaR, CVaR, Sharpe)
+                                                                      1D 95% VaR, CVaR, Sharpe)
      │                                                                    │
      └──────────────────────────────┬─────────────────────────────────────┘
                                     ▼
@@ -52,7 +67,7 @@ Instead of acting as a generic conversational chatbot or stock price predictor, 
                                     │
                                     ▼
                      [11. ComplianceChecker Node]
-               (SEBI non-advice validation; neutralizes buy/sell)
+               (SEBI non-advice validation; neutralizes buy/sell; audit log)
                                     │
                                     ▼
                        [12. Final Report Node]
@@ -61,43 +76,81 @@ Instead of acting as a generic conversational chatbot or stock price predictor, 
 
 ---
 
-## 3. Mathematical Specifications & Formulas
+## 4. Honest Implemented vs Planned Checklist
 
-| Category | Indicator / Metric | Mathematical Formulation | Parameters / Standard |
-| :--- | :--- | :--- | :--- |
-| **Technical** | Wilder's RSI | $RSI = 100 - \frac{100}{1 + RS}$ | Period 14, $\alpha = 1/14$ smoothing |
-| **Technical** | MACD | $EMA_{12}(P) - EMA_{26}(P)$, Signal: $EMA_9$ | Exponential smoothing |
-| **Technical** | Bollinger Bands | $SMA_{20}(P) \pm 2 \cdot \sigma_{20}(P)$ | 20-period, $2\sigma$ standard deviations |
-| **Risk** | Annualized Volatility | $\sigma_{ann} = \text{std}(r_t) \times \sqrt{252}$ | Daily log returns $r_t = \ln(P_t / P_{t-1})$ |
-| **Risk** | Beta vs NIFTY 50 | $\beta = \frac{\text{cov}(r_{stock}, r_{NIFTY})}{\text{var}(r_{NIFTY})}$ | 180-day rolling returns |
-| **Risk** | Value at Risk (95%) | $\text{VaR}_{95} = -\text{percentile}(r_t, 5)$ | 1-Day holding period, 95% confidence |
-| **Risk** | Conditional VaR (CVaR) | $\text{CVaR}_{95} = -\mathbb{E}[r_t \mid r_t \le -\text{VaR}]$ | Expected Shortfall in tail distribution |
-| **Risk** | Sharpe Ratio | $S = \frac{\text{Ann Return} - r_f}{\sigma_{ann}}$ | Hurdle rate $r_f = 6.50\%$ (India G-Sec) |
-| **Portfolio** | Modern Portfolio Theory | $\min w^T \Sigma w$ or $\max \frac{w^T \mu - r_f}{\sqrt{w^T \Sigma w}}$ | Long only, $\sum w_i = 1$, per-asset cap $\le 30\%$ |
-| **Stress Test**| What-If Market Shock | $\text{Impact} = \sum (w_i \cdot \beta_i) \times \text{Shock} \times \text{Value}$ | Systematic factor transmission |
-| **Derivatives**| Black-Scholes-Merton | $C = S e^{-qT} N(d_1) - K e^{-rT} N(d_2)$ | Continuous dividend yield $q$, Indian T-Bill $r$ |
-| **Derivatives**| Futures Fair Value | $F = S \cdot e^{(r - q)T}, \quad \text{Basis} = F_{market} - F$ | Cost-of-carry formulation |
-| **Fixed Income**| Modified Duration | $D^* = \frac{D_{Mac}}{1 + y/m}, \quad DV01 = P \cdot D^* \cdot 0.0001$ | Semi-annual compounding |
+| Feature | Status | Implementation Details |
+|---|---|---|
+| **LangGraph Real StateGraph Agent** | ✅ Implemented | Rebuilt `researchAgent.ts` with `@langchain/langgraph` `StateGraph` Annotation state & node fan-out. |
+| **SSE Progress Streaming** | ✅ Implemented | `POST /api/research/run` streams real-time node updates over Server-Sent Events. |
+| **Async ProviderRouter & Circuit Breakers** | ✅ Implemented | Yahoo Finance -> AlphaVantage -> Cache -> Sample Fallback with `opossum` breaker & `p-retry`. |
+| **FinBERT Sentiment Analysis** | ✅ Implemented | HuggingFace FinBERT model integration with news deduplication & 3-day half-life decay. |
+| **Drizzle ORM Database** | ✅ Implemented | SQLite database storing users, portfolios, holdings, watchlists, alerts, research runs, and audit logs. |
+| **JWT Auth & Security Middleware** | ✅ Implemented | bcryptjs hashing, httpOnly JWT cookies, helmet headers, express-rate-limit, and symbol regex validation. |
+| **Real-Time Alerts Engine** | ✅ Implemented | Cron market hours scanner broadcasting price, RSI, and volume alerts via WebSocket & SSE. |
+| **Advanced Charting & Radar** | ✅ Implemented | Interactive SVG/Canvas candlestick chart with EMAs/RSI/MACD & Recharts comparison radar. |
+| **Prometheus Metrics & Monitoring** | ✅ Implemented | `prom-client` counters at `/api/metrics` and real-time provider health dashboard at `/monitoring`. |
+| **Unit Testing & CI Pipeline** | ✅ Implemented | 8 Vitest unit tests (calculators, MPT, circuit breaker), benchmark script, and `.github/workflows/ci.yml`. |
+| **Docker & Docker Compose** | ✅ Implemented | Multi-stage `Dockerfile` and `docker-compose.yml` for App + PostgreSQL + Redis. |
+| **Distributed Multi-Region Deployment** | ⏳ Planned | AWS ECS / Google Cloud Run geo-redundant deployment with global Redis cluster. |
 
 ---
 
-## 4. SEBI Regulatory Compliance & Non-Advice Safeguards
+## 5. Quick Start & Setup Instructions
 
-Under SEBI (Research Analysts) Regulations, non-registered platforms cannot issue stock tips, target prices, or personalized buy/sell calls. ARTHA AI complies strictly by design:
-1. **No Recommendations:** Language is restricted to objective setup terminology (*"technical setup: bullish / neutral / bearish"*, *"supporting factors"*, *"analytical score"*).
-2. **Deterministic Grounding:** All metrics originate from verified financial math models in code, never the language model's memory.
-3. **Mandatory Disclaimer:** Displayed persistently on every page, report header, and PDF export:
+### Environment Variables (.env)
+Copy `.env.example` to `.env`:
+```bash
+PORT=3000
+NODE_ENV=development
+GEMINI_API_KEY=your_gemini_api_key_here
+ALPHAVANTAGE_API_KEY=your_alphavantage_key
+NEWS_API_KEY=your_news_api_key
+HF_TOKEN=your_huggingface_token
+JWT_SECRET=artha-ai-super-secret-key-2026
+DATABASE_URL=postgres://artha:artha123@localhost:5432/arthadb
+REDIS_URL=redis://localhost:6379
+```
+
+### Installation & Local Run
+```bash
+# Install dependencies
+npm i
+
+# Run unit test suite
+npm run test
+
+# Run performance benchmark (generates docs/benchmarks.md)
+npm run benchmark
+
+# Start development server
+npm run dev
+```
+
+Visit `http://localhost:3000` in your browser.
+
+### Docker Deployment
+```bash
+docker-compose up --build -d
+```
+
+---
+
+## 6. Regulatory Compliance & Non-Advice Safeguards
+
+Under SEBI (Research Analysts) Regulations, non-registered platforms cannot issue stock recommendations, target prices, or personalized buy/sell calls:
+1. **Zero Directive Calls**: All language is restricted to objective setup observations.
+2. **Strict Evidence Grounding**: Invented numbers are rejected by the `NumberValidator` node.
+3. **Statutory Disclaimer**: Displayed on all views, dossiers, and exported PDF reports:
    > *"ARTHA AI provides financial research and analytical information for educational and informational purposes only. It does not provide personalized investment advice, recommendations, or guarantees of returns. Users should conduct independent research and consult a qualified financial professional before making investment decisions."*
 
 ---
 
-## 5. Live Demo Flow for Evaluation
+## 7. Live Demo Flow for Evaluation
 
-1. **Stock Research & Candlestick Analysis:** Search for `RELIANCE.NS`, `TCS.NS`, `INFY.NS`, or `HDFCBANK.NS`. Inspect the candlestick chart, toggle SMA/EMA/Bollinger overlays and RSI/MACD sub-panes.
-2. **Execute Agent Workflow:** Click **"Run Agent Analysis"** to watch the streaming 12-node LangGraph pipeline execute with latency and audited evidence counts.
-3. **Inspect 13-Section Dossier & Download PDF:** Review the audited sections and click **"Download Full PDF Report"** to export the structured document.
-4. **Dual-Stock Radar Compare:** Navigate to **"Compare Radar"** to benchmark TCS vs INFY or RELIANCE vs HDFCBANK side-by-side with radar charts.
-5. **Portfolio & MPT Optimizer:** Navigate to **"Portfolio & MPT"** to view current equity holdings, run the Markowitz Efficient Frontier optimizer (Max Sharpe / Min Volatility), and slide the What-If market shock bar (-25% to +25%).
-6. **Macro Transmission:** View India's 6 sovereign macro benchmarks (RBI Repo Rate, CPI, GDP, IIP, USD/INR, 10Y G-Sec) and toggle sector sensitivities.
-7. **Quantitative Calculators:** Test the Black-Scholes-Merton Options Lab, Greek sensitivities, Put-Call Parity, Futures Cost-of-Carry, and Bond Duration.
-8. **Grounded AI Assistant:** Open the floating assistant on any page to ask grounded analytical questions.
+1. **Stock Research & Candlestick Analysis**: Search for `RELIANCE.NS`, `TCS.NS`, `INFY.NS`, or `HDFCBANK.NS`. Inspect candlestick chart, toggle SMA/EMA/Bollinger overlays and RSI/MACD sub-panes.
+2. **Execute LangGraph Agent Workflow**: Click **"Run Agent Analysis"** to watch the streaming node-by-node pipeline execute with latency and evidence metrics.
+3. **Inspect 13-Section Dossier & Download PDF**: Review audited research sections and click **"Download Full PDF Report"**.
+4. **Dual-Stock Radar Compare**: Navigate to **"Compare Radar"** to benchmark TCS vs INFY side-by-side.
+5. **Portfolio & MPT Optimizer**: Navigate to **"Portfolio & MPT"** to view current equity holdings, run Markowitz Efficient Frontier optimization (`Max Sharpe` / `Min Volatility`), and slide the What-If market shock bar (-25% to +25%).
+6. **Real-Time Alerts Engine**: Navigate to **"Alerts"** to configure indicator rules and view live triggered SSE events.
+7. **System Health & Prometheus Monitoring**: Navigate to **"Monitoring"** to inspect live API provider circuit breaker states and request audit logs. View Prometheus text metrics at `http://localhost:3000/api/metrics`.

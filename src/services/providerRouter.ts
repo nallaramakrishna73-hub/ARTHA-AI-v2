@@ -10,18 +10,23 @@ import {
   getOrCreateBars,
   MACRO_DATA,
 } from '../data/sampleData.ts';
+import { yahooProvider } from '../providers/yahooProvider.ts';
+import { alphaVantageProvider } from '../providers/alphaVantageProvider.ts';
+import { newsProvider } from '../providers/newsProvider.ts';
+import { cacheManager } from './cache.ts';
 import { scoreFundamentals } from '../analysis/fundamentals.ts';
-import { analyzeMacro } from '../analysis/macro.ts';
 
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
+export interface ApiUsageLog {
+  provider: string;
+  endpoint: string;
+  status: 'SUCCESS' | 'FALLBACK' | 'ERROR';
+  latencyMs: number;
+  ts: string;
 }
 
 class ProviderRouter {
-  private cache = new Map<string, CacheEntry<any>>();
+  public apiUsageLogs: ApiUsageLog[] = [];
 
-  // Cache TTLs in milliseconds
   private ttls = {
     quote: 15 * 1000,
     history: 60 * 60 * 1000,
@@ -30,21 +35,18 @@ class ProviderRouter {
     macro: 12 * 60 * 60 * 1000,
   };
 
-  private getCached<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    if (Date.now() > entry.expiresAt) {
-      this.cache.delete(key);
-      return null;
+  private logUsage(provider: string, endpoint: string, status: 'SUCCESS' | 'FALLBACK' | 'ERROR', latencyMs: number) {
+    const log: ApiUsageLog = {
+      provider,
+      endpoint,
+      status,
+      latencyMs,
+      ts: new Date().toISOString(),
+    };
+    this.apiUsageLogs.push(log);
+    if (this.apiUsageLogs.length > 500) {
+      this.apiUsageLogs.shift();
     }
-    return entry.data as T;
-  }
-
-  private setCache<T>(key: string, data: T, ttlMs: number) {
-    this.cache.set(key, {
-      data,
-      expiresAt: Date.now() + ttlMs,
-    });
   }
 
   public normalizeSymbol(symbol: string): string {
@@ -55,38 +57,92 @@ class ProviderRouter {
     return clean;
   }
 
-  public getQuote(symbol: string): QuoteData {
+  public async getQuote(symbol: string): Promise<QuoteData> {
+    const startTime = Date.now();
     const norm = this.normalizeSymbol(symbol);
     const cacheKey = `quote:${norm}`;
-    const cached = this.getCached<QuoteData>(cacheKey);
-    if (cached) return cached;
 
-    const quote = getOrCreateIndianQuote(norm);
-    this.setCache(cacheKey, quote, this.ttls.quote);
-    return quote;
+    // Check cache
+    const cached = await cacheManager.get<QuoteData>(cacheKey);
+    if (cached) {
+      this.logUsage('cache', `getQuote:${norm}`, 'SUCCESS', Date.now() - startTime);
+      return { ...cached, isStale: false };
+    }
+
+    // Provider 1: Yahoo Finance
+    if (process.env.FORCE_FAIL !== 'yahoo' && process.env.FORCE_FAIL !== 'all') {
+      const yahooQuote = await yahooProvider.getQuote(norm);
+      if (yahooQuote) {
+        await cacheManager.set(cacheKey, yahooQuote, this.ttls.quote);
+        this.logUsage('yahoo', `getQuote:${norm}`, 'SUCCESS', Date.now() - startTime);
+        return yahooQuote;
+      }
+    }
+
+    // Provider 2: AlphaVantage
+    if (process.env.FORCE_FAIL !== 'alphavantage' && process.env.FORCE_FAIL !== 'all') {
+      const avQuote = await alphaVantageProvider.getQuote(norm);
+      if (avQuote) {
+        await cacheManager.set(cacheKey, avQuote, this.ttls.quote);
+        this.logUsage('alphavantage', `getQuote:${norm}`, 'FALLBACK', Date.now() - startTime);
+        return avQuote;
+      }
+    }
+
+    // Provider 3: Sample Fallback (Demo Mode)
+    const sample = getOrCreateIndianQuote(norm);
+    const result: QuoteData = {
+      ...sample,
+      isDemo: true,
+      source: 'sample_fallback',
+      asOf: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST (Demo)',
+    };
+    await cacheManager.set(cacheKey, result, this.ttls.quote);
+    this.logUsage('sample', `getQuote:${norm}`, 'FALLBACK', Date.now() - startTime);
+    return result;
   }
 
-  public getHistory(symbol: string): OHLCVBar[] {
+  public async getHistory(symbol: string): Promise<OHLCVBar[]> {
+    const startTime = Date.now();
     const norm = this.normalizeSymbol(symbol);
     const cacheKey = `history:${norm}`;
-    const cached = this.getCached<OHLCVBar[]>(cacheKey);
-    if (cached) return cached;
 
-    const bars = getOrCreateBars(norm);
-    this.setCache(cacheKey, bars, this.ttls.history);
-    return bars;
+    const cached = await cacheManager.get<OHLCVBar[]>(cacheKey);
+    if (cached) {
+      this.logUsage('cache', `getHistory:${norm}`, 'SUCCESS', Date.now() - startTime);
+      return cached;
+    }
+
+    if (process.env.FORCE_FAIL !== 'yahoo' && process.env.FORCE_FAIL !== 'all') {
+      const yahooHistory = await yahooProvider.getHistory(norm);
+      if (yahooHistory && yahooHistory.length > 0) {
+        await cacheManager.set(cacheKey, yahooHistory, this.ttls.history);
+        this.logUsage('yahoo', `getHistory:${norm}`, 'SUCCESS', Date.now() - startTime);
+        return yahooHistory;
+      }
+    }
+
+    // Fallback: Sample data
+    const sampleBars = getOrCreateBars(norm);
+    await cacheManager.set(cacheKey, sampleBars, this.ttls.history);
+    this.logUsage('sample', `getHistory:${norm}`, 'FALLBACK', Date.now() - startTime);
+    return sampleBars;
   }
 
-  public getFundamentals(symbol: string): FundamentalData {
+  public async getFundamentals(symbol: string): Promise<FundamentalData> {
+    const startTime = Date.now();
     const norm = this.normalizeSymbol(symbol);
     const cacheKey = `fund:${norm}`;
-    const cached = this.getCached<FundamentalData>(cacheKey);
-    if (cached) return cached;
 
-    const quote = this.getQuote(norm);
+    const cached = await cacheManager.get<FundamentalData>(cacheKey);
+    if (cached) {
+      this.logUsage('cache', `getFundamentals:${norm}`, 'SUCCESS', Date.now() - startTime);
+      return cached;
+    }
+
+    const quote = await this.getQuote(norm);
     const base = norm.replace(/\.(NS|BO)$/, '');
 
-    // Hash-based deterministic values
     let hash = 0;
     for (let i = 0; i < base.length; i++) hash = (hash << 5) - hash + base.charCodeAt(i);
     const pos = Math.abs(hash);
@@ -95,21 +151,21 @@ class ProviderRouter {
     const pe = quote.peRatio || (15 + (pos % 25));
     const pb = quote.pbRatio || (1.8 + (pos % 6));
     const roe = Math.round((10 + (pos % 22)) * 10) / 10;
-    const roce = Math.round((roe * 1.15) * 10) / 10;
-    const de = isBank ? Math.round((4.5 + (pos % 4)) * 10) / 10 : Math.round((pos % 65) / 100 * 10) / 10;
+    const roce = Math.round(roe * 1.15 * 10) / 10;
+    const de = isBank ? Math.round((4.5 + (pos % 4)) * 10) / 10 : Math.round(((pos % 65) / 100) * 10) / 10;
     const opMargin = Math.round((12 + (pos % 22)) * 10) / 10;
 
     const raw = {
       symbol: norm,
       peRatio: pe,
       pbRatio: pb,
-      evToEbitda: Math.round((pe * 0.65) * 10) / 10,
+      evToEbitda: Math.round(pe * 0.65 * 10) / 10,
       pegRatio: Math.round((1.2 + (pos % 14) / 10) * 10) / 10,
       dividendYield: Math.round(((pos % 30) / 10) * 10) / 10,
       roe,
       roce,
       operatingMargin: opMargin,
-      netProfitMargin: Math.round((opMargin * 0.62) * 10) / 10,
+      netProfitMargin: Math.round(opMargin * 0.62 * 10) / 10,
       revenueGrowthYoY: Math.round((8 + (pos % 18)) * 10) / 10,
       profitGrowthYoY: Math.round((9 + (pos % 20)) * 10) / 10,
       debtToEquity: de,
@@ -119,17 +175,31 @@ class ProviderRouter {
     };
 
     const scored = scoreFundamentals(raw);
-    this.setCache(cacheKey, scored, this.ttls.fundamentals);
+    await cacheManager.set(cacheKey, scored, this.ttls.fundamentals);
+    this.logUsage('internal_calc', `getFundamentals:${norm}`, 'SUCCESS', Date.now() - startTime);
     return scored;
   }
 
-  public getNews(symbol: string): NewsArticleItem[] {
+  public async getNews(symbol: string): Promise<NewsArticleItem[]> {
+    const startTime = Date.now();
     const norm = this.normalizeSymbol(symbol);
     const cacheKey = `news:${norm}`;
-    const cached = this.getCached<NewsArticleItem[]>(cacheKey);
-    if (cached) return cached;
 
-    const quote = this.getQuote(norm);
+    const cached = await cacheManager.get<NewsArticleItem[]>(cacheKey);
+    if (cached) {
+      this.logUsage('cache', `getNews:${norm}`, 'SUCCESS', Date.now() - startTime);
+      return cached;
+    }
+
+    const liveNews = await newsProvider.getNews(norm);
+    if (liveNews && liveNews.length > 0) {
+      await cacheManager.set(cacheKey, liveNews, this.ttls.news);
+      this.logUsage('news_provider', `getNews:${norm}`, 'SUCCESS', Date.now() - startTime);
+      return liveNews;
+    }
+
+    // Fallback: Sample News
+    const quote = await this.getQuote(norm);
     const base = norm.replace(/\.(NS|BO)$/, '');
 
     const generatedNews: NewsArticleItem[] = [
@@ -171,7 +241,8 @@ class ProviderRouter {
       },
     ];
 
-    this.setCache(cacheKey, generatedNews, this.ttls.news);
+    await cacheManager.set(cacheKey, generatedNews, this.ttls.news);
+    this.logUsage('sample', `getNews:${norm}`, 'FALLBACK', Date.now() - startTime);
     return generatedNews;
   }
 
@@ -197,7 +268,6 @@ class ProviderRouter {
         item.sector.toLowerCase().includes(q)
     );
 
-    // If no direct pool match, generate an on-the-fly search result option
     if (matches.length === 0 && q.length >= 2) {
       const cleanQ = q.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const dynamicSymbol = `${cleanQ}.NS`;

@@ -16,10 +16,12 @@ import {
   Info,
   ChevronRight,
   TrendingUp,
+  Bell,
+  ShieldCheck,
 } from 'lucide-react';
 import { INDIAN_STOCKS_UNIVERSE } from '../data/sampleData.ts';
 import { providerRouter } from '../services/providerRouter.ts';
-import { formatINR, formatPercent } from '../utils/format.ts';
+import { formatPercent } from '../utils/format.ts';
 
 interface NavbarProps {
   currentSymbol: string;
@@ -71,7 +73,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'compare', label: 'Compare Radar', icon: Scale },
     { id: 'portfolio', label: 'Portfolio & MPT', icon: Briefcase },
     { id: 'macro', label: 'Macro Transmission', icon: Landmark },
+    { id: 'alerts', label: 'Alerts', icon: Bell },
     { id: 'calculators', label: 'Calculators', icon: Calculator },
+    { id: 'monitoring', label: 'Monitoring', icon: ShieldCheck },
     { id: 'docs', label: 'Architecture & Docs', icon: Info },
   ];
 
@@ -175,7 +179,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="absolute left-0 right-0 top-full mt-1.5 bg-[#0B1F3A] border border-[#1B2B48] rounded-xl shadow-2xl overflow-hidden max-h-80 overflow-y-auto z-50 divide-y divide-[#1B2B48]"
               onMouseLeave={() => setIsDropdownOpen(false)}
             >
-              {/* Quick Prompt if typing something new */}
               {searchQuery && (
                 <div
                   onClick={() => handleSelect(searchQuery)}

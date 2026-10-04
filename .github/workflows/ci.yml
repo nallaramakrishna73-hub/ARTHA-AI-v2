@@ -1,0 +1,36 @@
+name: ARTHA AI Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: TypeScript Type Checking
+        run: npm run lint
+
+      - name: Execute Vitest Suite
+        run: npm run test
+
+      - name: Execute Performance Benchmark
+        run: npm run benchmark
+
+      - name: Build Vite Production Bundle
+        run: npm run build
