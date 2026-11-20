@@ -313,7 +313,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
                 <span>
                   {subPane === 'rsi' && `RSI (14, Wilder): ${technical.rsi14}`}
                   {subPane === 'macd' && `MACD: Line ${technical.macd.line} · Signal ${technical.macd.signal} · Hist ${technical.macd.histogram}`}
-                  {subPane === 'volume' && `Volume (SMA 20): Current ${formatIndianNumber(currentBar.volume, 0)}`}
+                  {subPane === 'volume' && `Volume (SMA 20): Current ${formatIndianNumber(currentBar?.volume ?? 0, 0)}`}
                 </span>
                 <span>
                   {subPane === 'rsi' && 'Oversold < 30 · Overbought > 70'}
@@ -375,7 +375,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
                   <>
                     {filteredBars.map((b, i) => {
                       const x = (i / (n - 1 || 1)) * 960 + 20;
-                      const barH = (b.volume / maxVolume) * (subPaneHeight - 10);
+                      const barH = maxVolume > 0 ? (b.volume / maxVolume) * (subPaneHeight - 10) : 0;
                       const isGreen = b.close >= b.open;
                       return (
                         <rect

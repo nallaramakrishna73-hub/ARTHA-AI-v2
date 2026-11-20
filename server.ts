@@ -67,22 +67,22 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-// Rate limiters
+// Rate limiters (scoped to /api/ so Vite frontend assets are never throttled)
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 300,
   validate: { forwardedHeader: false },
   message: { error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' } },
 });
 
 const researchLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 30,
   validate: { forwardedHeader: false },
-  message: { error: { code: 'RATE_LIMIT', message: 'Research generation rate limit reached (max 10/min).' } },
+  message: { error: { code: 'RATE_LIMIT', message: 'Research generation rate limit reached (max 30/min).' } },
 });
 
-app.use(generalLimiter);
+app.use('/api/', generalLimiter);
 
 // Request tracking & metrics middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -490,9 +490,9 @@ ${JSON.stringify(evidence, null, 2)}
   if (ai) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: `User Query: ${cleanMsg}`,
-        config: { systemInstruction, temperature: 0.2 },
+        config: { systemInstruction },
       });
 
       const reply = response.text || 'Unable to formulate response from model.';

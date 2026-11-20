@@ -71,7 +71,7 @@ export const MonitoringView: React.FC = () => {
           <div className={`text-xl font-bold mt-1 flex items-center gap-1.5 ${health?.geminiConfigured ? 'text-emerald-400' : 'text-amber-400'}`}>
             <ShieldCheck className="w-4 h-4" /> {health?.geminiConfigured ? 'Live API Key' : 'Demo Mode'}
           </div>
-          <span className="text-xs text-slate-500">{health?.geminiConfigured ? 'gemini-3.8-flash' : 'Deterministic Fallback'}</span>
+          <span className="text-xs text-slate-500">{health?.geminiConfigured ? 'gemini-4-hydrogen' : 'Deterministic Fallback'}</span>
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">

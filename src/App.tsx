@@ -87,6 +87,10 @@ export default function App() {
           }),
         ]);
 
+        if (!qRes.ok || !bRes.ok || !niftyRes.ok || !fundRes.ok || !sentRes.ok || !rptRes.ok) {
+          throw new Error('One or more market data endpoints returned an error response');
+        }
+
         const q: QuoteData = await qRes.json();
         const b: OHLCVBar[] = await bRes.json();
         const niftyB: OHLCVBar[] = await niftyRes.json();
@@ -126,9 +130,12 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol1: currentSymbol, symbol2: compareSymbol }),
           });
+          if (!res.ok) throw new Error('Compare request failed');
           const data = await res.json();
-          setCompareReport1(data.stock1);
-          setCompareReport2(data.stock2);
+          if (data.stock1 && data.stock2) {
+            setCompareReport1(data.stock1);
+            setCompareReport2(data.stock2);
+          }
         } catch (err) {
           console.error('Error setting compare reports:', err);
         }
