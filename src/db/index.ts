@@ -3,114 +3,128 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import * as schema from './schema.ts';
-import path from 'path';
+// MOCKED — in-memory Drizzle-compatible store (better-sqlite3 stripped for AI Studio runtime)
+const tables = new Map<any, Record<string, any>[]>();
 
-const dbPath = process.env.SQLITE_DB_PATH || path.resolve(process.cwd(), 'artha.db');
-const sqlite = new Database(dbPath);
-sqlite.pragma('journal_mode = WAL');
+function getTableRows(table: any): Record<string, any>[] {
+  if (!tables.has(table)) {
+    tables.set(table, []);
+  }
+  return tables.get(table)!;
+}
 
-export const db = drizzle(sqlite, { schema });
+function resolveColumnKey(table: any, col: any): string | null {
+  if (!col) return null;
+  if (table && typeof table === 'object') {
+    for (const [jsKey, colDef] of Object.entries(table)) {
+      if (colDef === col) return jsKey;
+    }
+  }
+  return col.name ?? null;
+}
 
-// Auto-migrate tables for local SQLite development
+function matchesCondition(table: any, row: Record<string, any>, condition: any): boolean {
+  if (!condition) return true;
+  const chunks = condition.queryChunks;
+  if (!Array.isArray(chunks)) return true;
+
+  // Handle drizzle eq(col, value)
+  let colObj: any = null;
+  let paramObj: any = null;
+  for (const chunk of chunks) {
+    if (chunk && typeof chunk === 'object') {
+      if ('table' in chunk && 'name' in chunk) {
+        colObj = chunk;
+      } else if ('value' in chunk && chunk.constructor?.name !== 'StringChunk') {
+        paramObj = chunk;
+      }
+    }
+  }
+
+  if (colObj && paramObj !== null) {
+    const key = resolveColumnKey(table, colObj);
+    if (key) {
+      return row[key] === paramObj.value;
+    }
+  }
+
+  return true;
+}
+
+export const db: any = {
+  select() {
+    return {
+      from(table: any) {
+        const rows = getTableRows(table);
+        const query = {
+          where(condition: any) {
+            const filtered = rows.filter((r) => matchesCondition(table, r, condition));
+            return {
+              all: () => filtered,
+              get: () => filtered[0],
+            };
+          },
+          all: () => [...rows],
+          get: () => rows[0],
+        };
+        return query;
+      },
+    };
+  },
+  insert(table: any) {
+    return {
+      values(data: Record<string, any> | Record<string, any>[]) {
+        return {
+          run() {
+            const rows = getTableRows(table);
+            const items = Array.isArray(data) ? data : [data];
+            rows.push(...items);
+            return { changes: items.length };
+          },
+        };
+      },
+    };
+  },
+  update(table: any) {
+    return {
+      set(patch: Record<string, any>) {
+        return {
+          where(condition: any) {
+            return {
+              run() {
+                const rows = getTableRows(table);
+                let changes = 0;
+                for (const row of rows) {
+                  if (matchesCondition(table, row, condition)) {
+                    Object.assign(row, patch);
+                    changes++;
+                  }
+                }
+                return { changes };
+              },
+            };
+          },
+        };
+      },
+    };
+  },
+  delete(table: any) {
+    return {
+      where(condition: any) {
+        return {
+          run() {
+            const rows = getTableRows(table);
+            const before = rows.length;
+            const kept = rows.filter((r) => !matchesCondition(table, r, condition));
+            tables.set(table, kept);
+            return { changes: before - kept.length };
+          },
+        };
+      },
+    };
+  },
+};
+
 export function initDatabase() {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user',
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS watchlists (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS watchlist_items (
-      id TEXT PRIMARY KEY,
-      watchlist_id TEXT NOT NULL,
-      symbol TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS portfolios (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS holdings (
-      id TEXT PRIMARY KEY,
-      portfolio_id TEXT NOT NULL,
-      symbol TEXT NOT NULL,
-      name TEXT NOT NULL,
-      sector TEXT NOT NULL,
-      quantity INTEGER NOT NULL,
-      avg_buy_price REAL NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS alerts (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      symbol TEXT NOT NULL,
-      condition_type TEXT NOT NULL,
-      target_value REAL NOT NULL,
-      active INTEGER NOT NULL DEFAULT 1,
-      cool_down_until TEXT,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS alert_events (
-      id TEXT PRIMARY KEY,
-      alert_id TEXT NOT NULL,
-      symbol TEXT NOT NULL,
-      message TEXT NOT NULL,
-      triggered_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS research_runs (
-      id TEXT PRIMARY KEY,
-      symbol TEXT NOT NULL,
-      state_json TEXT NOT NULL,
-      overall_score INTEGER NOT NULL,
-      latency_ms INTEGER NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS reports (
-      id TEXT PRIMARY KEY,
-      symbol TEXT NOT NULL,
-      report_json TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS api_usage (
-      id TEXT PRIMARY KEY,
-      provider TEXT NOT NULL,
-      endpoint TEXT NOT NULL,
-      status TEXT NOT NULL,
-      latency_ms INTEGER NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      action TEXT NOT NULL,
-      details TEXT NOT NULL,
-      ip TEXT,
-      created_at TEXT NOT NULL
-    );
-  `);
-
-  console.log(`[Database] SQLite initialized at ${dbPath}`);
+  console.log('[Database] In-memory mock database initialized (AI Studio runtime)');
 }

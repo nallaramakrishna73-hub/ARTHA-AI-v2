@@ -27,39 +27,48 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [interval, setInterval] = useState<'D' | 'W' | 'M' | '60' | '15'>('D');
+  // TradingView's free embed widget blocks NSE: symbols (falling back to AAPL),
+  // whereas BSE: Indian equities are supported directly in the embedded widget.
+  const [tvExchange, setTvExchange] = useState<'BSE' | 'NSE'>('BSE');
 
   // Active Technical Indicator Studies in TradingView
   const [activeStudies, setActiveStudies] = useState<{ [id: string]: boolean }>({
     'STD;RSI': true,
     'STD;MACD': true,
-    'STD;EMA': true,
+    'MAExp@tv-basicstudies': true,
     'STD;Bollinger_Bands': true,
-    'STD;SMA': false,
-    'STD;Volume': true,
+    'MASimple@tv-basicstudies': false,
   });
 
-  // Map internal symbol to TradingView Indian market format
-  const getTradingViewSymbol = (sym: string): string => {
+  // Map internal Yahoo/NSE symbol to TradingView embed-compatible Indian symbol
+  const getTradingViewSymbol = (sym: string, exchange: 'BSE' | 'NSE'): string => {
     const clean = sym.toUpperCase().trim();
-    if (clean === '^NSEI') return 'NSE:NIFTY';
-    if (clean === '^NSEBANK') return 'NSE:BANKNIFTY';
+    if (clean === '^NSEI') return exchange === 'BSE' ? 'BSE:SENSEX' : 'NSE:NIFTY';
+    if (clean === '^NSEBANK') return exchange === 'BSE' ? 'BSE:BANKEX' : 'NSE:BANKNIFTY';
     if (clean === '^BSESN') return 'BSE:SENSEX';
 
     const base = clean.replace(/\.(NS|BO)$/, '');
-    const isBSE = clean.endsWith('.BO');
-    return `${isBSE ? 'BSE' : 'NSE'}:${base}`;
+
+    // Symbol renames / TradingView ticker aliases on Indian exchanges
+    const symbolAliases: Record<string, string> = {
+      ZOMATO: 'ETERNAL',
+      'M&M': 'M_M',
+      'BAJAJ-AUTO': 'BAJAJ_AUTO',
+    };
+    const mappedBase = symbolAliases[base] || base;
+    return `${exchange}:${mappedBase}`;
   };
 
-  const tvSymbol = getTradingViewSymbol(symbol);
+  const tvSymbol = getTradingViewSymbol(symbol, tvExchange);
+  const externalTvSymbol = getTradingViewSymbol(symbol, symbol.toUpperCase().endsWith('.BO') ? 'BSE' : 'NSE');
 
   // Available Studies Configuration
   const availableIndicators = [
     { id: 'STD;RSI', name: 'RSI (14)', label: 'Relative Strength Index' },
     { id: 'STD;MACD', name: 'MACD (12,26,9)', label: 'MACD + Signal + Hist' },
-    { id: 'STD;EMA', name: 'EMA', label: 'Exponential Moving Average' },
+    { id: 'MAExp@tv-basicstudies', name: 'EMA', label: 'Exponential Moving Average' },
     { id: 'STD;Bollinger_Bands', name: 'Bollinger Bands', label: '20-period 2σ Bands' },
-    { id: 'STD;Volume', name: 'Volume', label: 'Volume Bars' },
-    { id: 'STD;SMA', name: 'SMA', label: 'Simple Moving Average' },
+    { id: 'MASimple@tv-basicstudies', name: 'SMA', label: 'Simple Moving Average' },
   ];
 
   const toggleStudy = (studyId: string) => {
@@ -74,38 +83,33 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       setActiveStudies({
         'STD;RSI': true,
         'STD;MACD': true,
-        'STD;EMA': true,
+        'MAExp@tv-basicstudies': true,
         'STD;Bollinger_Bands': true,
-        'STD;SMA': true,
-        'STD;Volume': true,
+        'MASimple@tv-basicstudies': true,
       });
     } else if (preset === 'trend') {
       setActiveStudies({
         'STD;RSI': false,
         'STD;MACD': false,
-        'STD;EMA': true,
+        'MAExp@tv-basicstudies': true,
         'STD;Bollinger_Bands': true,
-        'STD;SMA': true,
-        'STD;Volume': true,
+        'MASimple@tv-basicstudies': true,
       });
     } else if (preset === 'momentum') {
       setActiveStudies({
         'STD;RSI': true,
         'STD;MACD': true,
-        'STD;EMA': false,
+        'MAExp@tv-basicstudies': false,
         'STD;Bollinger_Bands': false,
-        'STD;SMA': false,
-        'STD;Volume': true,
+        'MASimple@tv-basicstudies': false,
       });
     } else {
-      // Clean
       setActiveStudies({
         'STD;RSI': false,
         'STD;MACD': false,
-        'STD;EMA': false,
+        'MAExp@tv-basicstudies': false,
         'STD;Bollinger_Bands': false,
-        'STD;SMA': false,
-        'STD;Volume': false,
+        'MASimple@tv-basicstudies': false,
       });
     }
   };
@@ -136,30 +140,19 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
     script.async = true;
 
-    // Both STD and tv-basicstudies fallback format for maximum compatibility
-    const studiesToInject = selectedStudiesList.map((s) => {
-      if (s === 'STD;RSI') return 'STD;RSI';
-      if (s === 'STD;MACD') return 'STD;MACD';
-      if (s === 'STD;EMA') return 'STD;EMA';
-      if (s === 'STD;Bollinger_Bands') return 'STD;Bollinger_Bands';
-      if (s === 'STD;SMA') return 'STD;SMA';
-      if (s === 'STD;Volume') return 'STD;Volume';
-      return s;
-    });
-
     const widgetConfig = {
       autosize: true,
       symbol: tvSymbol,
       interval: interval,
       timezone: 'Asia/Kolkata',
-      theme: 'dark',
+      theme: theme,
       style: '1', // Candlesticks
-      locale: 'in',
+      locale: 'en',
       enable_publishing: false,
       allow_symbol_change: true,
       hide_side_toolbar: false,
       hide_top_toolbar: false,
-      studies: studiesToInject,
+      studies: selectedStudiesList,
       support_host: 'https://www.tradingview.com',
       calendar: false,
       withdateranges: true,
@@ -179,23 +172,40 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         containerRef.current.innerHTML = '';
       }
     };
-  }, [tvSymbol, interval, JSON.stringify(selectedStudiesList)]);
+  }, [tvSymbol, interval, theme, JSON.stringify(selectedStudiesList)]);
 
   return (
     <div className="relative w-full rounded-xl bg-[#070F1F] border border-[#1B2B48] overflow-hidden shadow-xl flex flex-col">
       {/* Top Header Bar */}
       <div className="px-3.5 py-2.5 bg-[#0B1F3A] border-b border-[#1B2B48] flex flex-wrap items-center justify-between gap-3 text-xs">
         {/* Ticker & Status */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A] animate-pulse" />
           <span className="font-bold text-white tracking-wide">
             TradingView Live Indian Market Chart
           </span>
           <span className="text-[#64748B]">·</span>
           <span className="font-mono text-[#FF9933] font-bold text-xs">{tvSymbol}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#16A34A]/20 text-[#16A34A] font-semibold">
-            NSE / BSE Live
-          </span>
+          <div className="flex items-center bg-[#070F1F] p-0.5 rounded border border-[#1B2B48] text-[10px]">
+            <button
+              onClick={() => setTvExchange('BSE')}
+              className={`px-1.5 py-0.5 rounded font-semibold transition-colors ${
+                tvExchange === 'BSE' ? 'bg-[#16A34A]/20 text-[#16A34A]' : 'text-[#64748B] hover:text-white'
+              }`}
+              title="BSE feed is supported directly in TradingView embedded widgets"
+            >
+              BSE
+            </button>
+            <button
+              onClick={() => setTvExchange('NSE')}
+              className={`px-1.5 py-0.5 rounded font-semibold transition-colors ${
+                tvExchange === 'NSE' ? 'bg-[#FF9933]/20 text-[#FF9933]' : 'text-[#64748B] hover:text-white'
+              }`}
+              title="Note: TradingView restricts NSE embeds in some regions"
+            >
+              NSE
+            </button>
+          </div>
         </div>
 
         {/* Interval Selector Buttons */}
@@ -224,12 +234,12 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         {/* External Link */}
         <div className="flex items-center gap-2 text-[#94A3B8] text-[11px]">
           <a
-            href={`https://www.tradingview.com/symbols/${tvSymbol.replace(':', '-')}/`}
+            href={`https://www.tradingview.com/symbols/${externalTvSymbol.replace(':', '-')}/`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-[#FF9933] hover:underline"
           >
-            <span>Full TV Page</span>
+            <span>Full TV Page ({externalTvSymbol})</span>
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
@@ -309,7 +319,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
                 Active indicators ({selectedStudiesList.length}):{' '}
                 <strong className="text-white">
                   {selectedStudiesList
-                    .map((s) => s.replace('STD;', ''))
+                    .map((s) => availableIndicators.find((i) => i.id === s)?.name || s.replace('STD;', ''))
                     .join(', ')}
                 </strong>
                 . You can also click the <strong className="text-[#38BDF8]">&quot;Indicators (fx)&quot;</strong> button inside the top chart toolbar to search and add 100+ community indicators (Supertrend, VWAP, Pivot Points).

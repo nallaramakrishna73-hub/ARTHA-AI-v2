@@ -34,12 +34,10 @@ import {
   PortfolioAnalytics,
 } from './types/index.ts';
 
-import { providerRouter } from './services/providerRouter.ts';
 import { analyzeTechnical } from './analysis/technical.ts';
 import { analyzeRisk } from './analysis/risk.ts';
-import { analyzeSentiment } from './analysis/sentiment.ts';
 import { analyzeMacro } from './analysis/macro.ts';
-import { researchAgent } from './agent/researchAgent.ts';
+import { MACRO_DATA } from './data/sampleData.ts';
 import { getSampleHoldings, computePortfolioAnalytics } from './analysis/portfolio.ts';
 import { formatINR, formatLakhCrore, formatPercent, getPercentColorClass } from './utils/format.ts';
 import { Sparkles, Loader2 } from 'lucide-react';
@@ -70,17 +68,32 @@ export default function App() {
     computePortfolioAnalytics(getSampleHoldings())
   );
 
-  // Load symbol data asynchronously whenever currentSymbol changes
+  // Load symbol data asynchronously via backend API whenever currentSymbol changes
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
       try {
-        const q = await providerRouter.getQuote(currentSymbol);
-        const b = await providerRouter.getHistory(currentSymbol);
-        const niftyB = await providerRouter.getHistory('^NSEI');
-        const fund = await providerRouter.getFundamentals(currentSymbol);
-        const news = await providerRouter.getNews(currentSymbol);
-        const sent = await analyzeSentiment(news, currentSymbol);
+        const encoded = encodeURIComponent(currentSymbol);
+        const [qRes, bRes, niftyRes, fundRes, sentRes, rptRes] = await Promise.all([
+          fetch(`/api/market/quote/${encoded}`),
+          fetch(`/api/market/history/${encoded}`),
+          fetch(`/api/market/history/${encodeURIComponent('^NSEI')}`),
+          fetch(`/api/analysis/fundamental/${encoded}`),
+          fetch(`/api/analysis/sentiment/${encoded}`),
+          fetch('/api/research/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: currentSymbol }),
+          }),
+        ]);
+
+        const q: QuoteData = await qRes.json();
+        const b: OHLCVBar[] = await bRes.json();
+        const niftyB: OHLCVBar[] = await niftyRes.json();
+        const fund: FundamentalData = await fundRes.json();
+        const sent: SentimentAnalysisResult = await sentRes.json();
+        const rpt: ResearchReport = await rptRes.json();
+
         const mac = analyzeMacro(q.sector);
         const tech = analyzeTechnical(b, currentSymbol);
         const rsk = analyzeRisk(b, niftyB, currentSymbol);
@@ -93,8 +106,6 @@ export default function App() {
           setSentiment(sent);
           setMacro(mac);
           setRisk(rsk);
-
-          const rpt = await researchAgent.runResearchWorkflow(currentSymbol);
           setReport(rpt);
         }
       } catch (err) {
@@ -110,10 +121,14 @@ export default function App() {
     if (activeView === 'compare') {
       async function loadCompare() {
         try {
-          const r1 = await researchAgent.runResearchWorkflow(currentSymbol);
-          const r2 = await researchAgent.runResearchWorkflow(compareSymbol);
-          setCompareReport1(r1);
-          setCompareReport2(r2);
+          const res = await fetch('/api/research/compare', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol1: currentSymbol, symbol2: compareSymbol }),
+          });
+          const data = await res.json();
+          setCompareReport1(data.stock1);
+          setCompareReport2(data.stock2);
         } catch (err) {
           console.error('Error setting compare reports:', err);
         }
@@ -127,21 +142,52 @@ export default function App() {
     setAgentSteps([]);
 
     try {
-      const generatedReport = await researchAgent.runResearchWorkflow(
-        symbolToRun,
-        (step) => {
-          setAgentSteps((prev) => {
-            const index = prev.findIndex((s) => s.node === step.node);
-            if (index >= 0) {
-              const next = [...prev];
-              next[index] = step;
-              return next;
-            }
-            return [...prev, step];
-          });
+      const response = await fetch('/api/research/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify({ symbol: symbolToRun }),
+      });
+
+      if (!response.body) {
+        const data = await response.json();
+        setReport(data);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const eventChunk of events) {
+          const line = eventChunk.trim();
+          if (!line.startsWith('data: ')) continue;
+          const payload = JSON.parse(line.slice(6));
+          if (payload.type === 'STEP_UPDATE' && payload.step) {
+            const step: AgentStepTrace = payload.step;
+            setAgentSteps((prev) => {
+              const index = prev.findIndex((s) => s.node === step.node);
+              if (index >= 0) {
+                const next = [...prev];
+                next[index] = step;
+                return next;
+              }
+              return [...prev, step];
+            });
+          } else if (payload.type === 'REPORT_COMPLETE' && payload.report) {
+            setReport(payload.report);
+          }
         }
-      );
-      setReport(generatedReport);
+      }
     } catch (err) {
       console.error('Agent workflow error:', err);
     } finally {
@@ -305,7 +351,7 @@ export default function App() {
           {/* MACRO RADAR VIEW */}
           {activeView === 'macro' && macro && (
             <MacroDashboardView
-              indicators={providerRouter.getMacroIndicators()}
+              indicators={MACRO_DATA}
               analysis={macro}
             />
           )}

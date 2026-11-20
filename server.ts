@@ -55,6 +55,9 @@ const app = express();
 const server = http.createServer(app);
 const PORT = Number(process.env.PORT) || 3000;
 
+// Trust reverse proxy headers (Cloud Run / load balancer)
+app.set('trust proxy', 1);
+
 // Security & Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
@@ -68,12 +71,14 @@ app.use(cookieParser());
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
+  validate: { forwardedHeader: false },
   message: { error: { code: 'RATE_LIMIT', message: 'Too many requests. Please try again later.' } },
 });
 
 const researchLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
+  validate: { forwardedHeader: false },
   message: { error: { code: 'RATE_LIMIT', message: 'Research generation rate limit reached (max 10/min).' } },
 });
 
@@ -324,7 +329,7 @@ app.get('/api/portfolios', async (req: Request, res: Response) => {
 
   // Enrich with live price quotes
   const enrichedHoldings = await Promise.all(
-    dbHoldings.map(async (h) => {
+    dbHoldings.map(async (h: any) => {
       const q = await providerRouter.getQuote(h.symbol);
       const currentValue = Math.round(h.quantity * q.price);
       const investedValue = Math.round(h.quantity * h.avgBuyPrice);

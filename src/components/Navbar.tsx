@@ -19,9 +19,41 @@ import {
   Bell,
   ShieldCheck,
 } from 'lucide-react';
-import { INDIAN_STOCKS_UNIVERSE } from '../data/sampleData.ts';
-import { providerRouter } from '../services/providerRouter.ts';
+import { INDIAN_STOCKS_UNIVERSE, getOrCreateIndianQuote } from '../data/sampleData.ts';
 import { formatPercent } from '../utils/format.ts';
+
+function searchSymbolsLocal(query: string): { symbol: string; name: string; sector: string; exchange: string }[] {
+  const q = query.toLowerCase().trim();
+  const pool = Object.values(INDIAN_STOCKS_UNIVERSE).map(item => ({
+    symbol: item.symbol,
+    name: item.name,
+    sector: item.sector,
+    exchange: item.exchange,
+  }));
+
+  if (!q) return pool.slice(0, 10);
+
+  const matches = pool.filter(
+    item =>
+      item.symbol.toLowerCase().includes(q) ||
+      item.name.toLowerCase().includes(q) ||
+      item.sector.toLowerCase().includes(q)
+  );
+
+  if (matches.length === 0 && q.length >= 2) {
+    const cleanQ = q.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const dynamicSymbol = `${cleanQ}.NS`;
+    const generated = getOrCreateIndianQuote(dynamicSymbol);
+    matches.push({
+      symbol: generated.symbol,
+      name: generated.name,
+      sector: generated.sector,
+      exchange: generated.exchange,
+    });
+  }
+
+  return matches;
+}
 
 interface NavbarProps {
   currentSymbol: string;
@@ -39,7 +71,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  const searchResults = providerRouter.searchSymbols(searchQuery);
+  const searchResults = searchSymbolsLocal(searchQuery);
 
   const quickCategories = [
     { label: 'All NIFTY', sym: 'RELIANCE.NS' },

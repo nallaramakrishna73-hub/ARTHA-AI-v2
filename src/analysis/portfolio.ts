@@ -9,7 +9,7 @@ import {
   MptOptimizationResult,
   WhatIfScenarioResult,
 } from '../types/index.ts';
-import { SAMPLE_QUOTES, SAMPLE_BARS } from '../data/sampleData.ts';
+import { SAMPLE_QUOTES, getOrCreateBars } from '../data/sampleData.ts';
 import { calculateLogReturns, standardDeviation, covariance } from './risk.ts';
 import { APP_CONFIG } from '../config/index.ts';
 
@@ -95,7 +95,7 @@ export function computePortfolioAnalytics(holdings: PortfolioHolding[]): Portfol
   const symbols = holdings.map(h => h.symbol);
   const returnsBySymbol: { [s: string]: number[] } = {};
   for (const s of symbols) {
-    const bars = SAMPLE_BARS[s] || SAMPLE_BARS['RELIANCE.NS'];
+    const bars = getOrCreateBars(s);
     returnsBySymbol[s] = calculateLogReturns(bars.map(b => b.close));
   }
 
